@@ -28,14 +28,25 @@ export function LoginForm({ role, onSuccess }: LoginFormProps) {
     setLoading(true);
 
     try {
+      console.log("[v0] Attempting login for:", email);
+      
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
+      console.log("[v0] SignIn response - data:", data, "error:", signInError);
+
       if (signInError) {
+        console.error("[v0] SignIn error details:", {
+          message: signInError.message,
+          status: signInError.status,
+          name: signInError.name,
+        });
         if (signInError.message.includes("Invalid login credentials")) {
           setError("メールアドレスまたはパスワードが正しくありません");
+        } else if (signInError.message.includes("Database error")) {
+          setError("データベースエラーが発生しました。しばらく待ってから再試行してください。");
         } else {
           setError(signInError.message);
         }
