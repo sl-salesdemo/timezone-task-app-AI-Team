@@ -79,35 +79,31 @@ INSERT INTO auth.users (
 ) ON CONFLICT (id) DO NOTHING;
 
 -- 作業者プロフィールを作成
-INSERT INTO public.profiles (id, email, name, role, region, created_at, updated_at)
+INSERT INTO public.profiles (id, email, display_name, role, created_at, updated_at)
 VALUES (
   'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
   'worker@test.com',
   'テスト作業者',
   'worker',
-  '東京',
   NOW(),
   NOW()
 ) ON CONFLICT (id) DO UPDATE SET
   email = EXCLUDED.email,
-  name = EXCLUDED.name,
+  display_name = EXCLUDED.display_name,
   role = EXCLUDED.role,
-  region = EXCLUDED.region,
   updated_at = NOW();
 
 -- 管理者プロフィールを作成
-INSERT INTO public.profiles (id, email, name, role, region, created_at, updated_at)
+INSERT INTO public.profiles (id, email, display_name, role, created_at, updated_at)
 VALUES (
   'b2c3d4e5-f6a7-8901-bcde-f23456789012',
   'admin@test.com',
   'テスト管理者',
   'admin',
-  NULL,
   NOW(),
   NOW()
 ) ON CONFLICT (id) DO UPDATE SET
   email = EXCLUDED.email,
-  name = EXCLUDED.name,
+  display_name = EXCLUDED.display_name,
   role = EXCLUDED.role,
-  region = EXCLUDED.region,
   updated_at = NOW();
