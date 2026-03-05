@@ -107,3 +107,57 @@ VALUES (
   display_name = EXCLUDED.display_name,
   role = EXCLUDED.role,
   updated_at = NOW();
+
+-- =====================================================
+-- auth.identities テーブルへのレコード追加
+-- Supabase Authではidentitiesレコードが必須
+-- =====================================================
+
+-- 作業者のidentityを作成
+INSERT INTO auth.identities (
+  id,
+  user_id,
+  identity_data,
+  provider,
+  provider_id,
+  last_sign_in_at,
+  created_at,
+  updated_at
+) VALUES (
+  'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+  'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+  jsonb_build_object('sub', 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'email', 'worker@test.com', 'email_verified', true),
+  'email',
+  'worker@test.com',
+  NOW(),
+  NOW(),
+  NOW()
+) ON CONFLICT DO NOTHING;
+
+-- 管理者のidentityを作成
+INSERT INTO auth.identities (
+  id,
+  user_id,
+  identity_data,
+  provider,
+  provider_id,
+  last_sign_in_at,
+  created_at,
+  updated_at
+) VALUES (
+  'b2c3d4e5-f6a7-8901-bcde-f23456789012',
+  'b2c3d4e5-f6a7-8901-bcde-f23456789012',
+  jsonb_build_object('sub', 'b2c3d4e5-f6a7-8901-bcde-f23456789012', 'email', 'admin@test.com', 'email_verified', true),
+  'email',
+  'admin@test.com',
+  NOW(),
+  NOW(),
+  NOW()
+) ON CONFLICT DO NOTHING;
+
+-- =====================================================
+-- テストアカウント情報（統一）
+-- =====================================================
+-- 作業者アカウント: worker@test.com / worker123
+-- 管理者アカウント: admin@test.com / admin123
+-- =====================================================
