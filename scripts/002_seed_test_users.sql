@@ -78,13 +78,13 @@ INSERT INTO auth.users (
   ''
 ) ON CONFLICT (id) DO NOTHING;
 
--- 作業者プロフィールを作成
+-- 作業者プロフィールを作成 (roleは 'user' または 'admin' のみ許可)
 INSERT INTO public.profiles (id, email, display_name, role, created_at, updated_at)
 VALUES (
   'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
   'worker@test.com',
   'テスト作業者',
-  'worker',
+  'user',
   NOW(),
   NOW()
 ) ON CONFLICT (id) DO UPDATE SET
