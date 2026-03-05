@@ -84,7 +84,7 @@ export function LoginForm({ role, onSuccess }: LoginFormProps) {
               <LogIn className="w-6 h-6 text-primary" />
             </div>
             <h1 className="text-xl font-bold text-foreground">BPO 業務進捗チェック</h1>
-            <p className="text-sm text-muted-foreground mt-1">{ROLE_LABELS[role]}ログイン</p>
+            <p className="text-sm text-muted-foreground mt-1">ログイン</p>
           </div>
 
           {/* Form */}
@@ -140,16 +140,7 @@ export function LoginForm({ role, onSuccess }: LoginFormProps) {
             </button>
           </form>
 
-          {/* Demo credentials hint */}
-          <div className="mt-4 p-3 bg-muted/50 rounded-lg">
-            <p className="text-xs text-muted-foreground text-center">
-              {role === "admin" ? (
-                <>デモ用: admin@example.com / admin123</>
-              ) : (
-                <>デモ用: user@example.com / user123</>
-              )}
-            </p>
-          </div>
+
         </div>
       </div>
     </div>
