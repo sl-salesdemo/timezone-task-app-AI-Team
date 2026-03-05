@@ -1,35 +1,76 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { LogIn } from "lucide-react";
+import { LogIn, Loader2 } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 
 interface LoginFormProps {
   role: "user" | "admin";
-  onSuccess: () => void;
+  onSuccess: (userId: string, isAdmin: boolean) => void;
 }
 
-const CREDENTIALS = {
-  user: { id: "user", password: "user", label: "作業者" },
-  admin: { id: "admin", password: "admin", label: "管理者" },
+const ROLE_LABELS = {
+  user: "作業者",
+  admin: "管理者",
 };
 
 export function LoginForm({ role, onSuccess }: LoginFormProps) {
-  const [loginId, setLoginId] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const cred = CREDENTIALS[role];
+  const supabase = createClient();
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
+    setLoading(true);
 
-    if (loginId === cred.id && password === cred.password) {
-      // セッションをsessionStorageに保存（タブを閉じるとクリア）
-      sessionStorage.setItem(`auth-${role}`, "true");
-      onSuccess();
-    } else {
-      setError("ログインIDまたはパスワードが正しくありません");
+    try {
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (signInError) {
+        if (signInError.message.includes("Invalid login credentials")) {
+          setError("メールアドレスまたはパスワードが正しくありません");
+        } else {
+          setError(signInError.message);
+        }
+        setLoading(false);
+        return;
+      }
+
+      if (!data.user) {
+        setError("ログインに失敗しました");
+        setLoading(false);
+        return;
+      }
+
+      // Get user profile to check role
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", data.user.id)
+        .single();
+
+      const isAdmin = profile?.role === "admin";
+
+      // Check if user has appropriate role for the page
+      if (role === "admin" && !isAdmin) {
+        setError("管理者権限がありません");
+        await supabase.auth.signOut();
+        setLoading(false);
+        return;
+      }
+
+      onSuccess(data.user.id, isAdmin);
+    } catch (err) {
+      console.error("Login error:", err);
+      setError("ログイン中にエラーが発生しました");
+      setLoading(false);
     }
   };
 
@@ -43,23 +84,24 @@ export function LoginForm({ role, onSuccess }: LoginFormProps) {
               <LogIn className="w-6 h-6 text-primary" />
             </div>
             <h1 className="text-xl font-bold text-foreground">BPO 業務進捗チェック</h1>
-            <p className="text-sm text-muted-foreground mt-1">{cred.label}ログイン</p>
+            <p className="text-sm text-muted-foreground mt-1">{ROLE_LABELS[role]}ログイン</p>
           </div>
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="loginId" className="block text-sm font-medium text-foreground mb-1.5">
-                ログインID
+              <label htmlFor="email" className="block text-sm font-medium text-foreground mb-1.5">
+                メールアドレス
               </label>
               <input
-                id="loginId"
-                type="text"
-                value={loginId}
-                onChange={(e) => setLoginId(e.target.value)}
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-3 py-2 bg-input border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="IDを入力"
-                autoComplete="username"
+                placeholder="email@example.com"
+                autoComplete="email"
+                required
               />
             </div>
             <div>
@@ -74,6 +116,7 @@ export function LoginForm({ role, onSuccess }: LoginFormProps) {
                 className="w-full px-3 py-2 bg-input border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 placeholder="パスワードを入力"
                 autoComplete="current-password"
+                required
               />
             </div>
 
@@ -83,11 +126,30 @@ export function LoginForm({ role, onSuccess }: LoginFormProps) {
 
             <button
               type="submit"
-              className="w-full py-2.5 bg-primary text-primary-foreground font-medium rounded-lg hover:bg-primary/90 transition-colors"
+              disabled={loading}
+              className="w-full py-2.5 bg-primary text-primary-foreground font-medium rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              ログイン
+              {loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  ログイン中...
+                </>
+              ) : (
+                "ログイン"
+              )}
             </button>
           </form>
+
+          {/* Demo credentials hint */}
+          <div className="mt-4 p-3 bg-muted/50 rounded-lg">
+            <p className="text-xs text-muted-foreground text-center">
+              {role === "admin" ? (
+                <>デモ用: admin@example.com / admin123</>
+              ) : (
+                <>デモ用: user@example.com / user123</>
+              )}
+            </p>
+          </div>
         </div>
       </div>
     </div>

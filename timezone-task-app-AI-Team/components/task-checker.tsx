@@ -1,99 +1,43 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { defaultTimeSlots, regionList, staffList, type TaskItem, type TimeSlot } from "@/lib/task-data";
-import { Users, Clock, Plus, X, Save, ChevronDown, ChevronUp } from "lucide-react";
+import { Users, Clock, Plus, X, ChevronDown, ChevronUp, LogOut, Calendar, Cloud, CloudOff } from "lucide-react";
 import Link from "next/link";
-
-// --- Storage helpers ---
-
-interface CompletedTask {
-  taskId: string;
-  regionId: string;
-  completedAt: string;
-}
-
-interface DailyReport {
-  newItems: ReportItem[];
-  sharedItems: ReportItem[];
-}
-
-interface ReportItem {
-  id: string;
-  text: string;
-  completed: boolean;
-}
-
-interface RegionAssignment {
-  regionId: string;
-  staffName: string;
-}
-
-interface CustomTask {
-  slotId: string;
-  time: string;
-  task: TaskItem;
-}
-
-interface DaySaveData {
-  completedTasks: CompletedTask[];
-  report: DailyReport;
-  regionAssignments: RegionAssignment[];
-  customTasks: CustomTask[];
-  savedAt: string;
-}
-
-function getDateKey(date?: Date): string {
-  const d = date || new Date();
-  return d.toISOString().split("T")[0];
-}
-
-function getStorageKey(dateKey?: string): string {
-  const key = dateKey || getDateKey();
-  return `task-checker-v3-${key}`;
-}
-
-// 2ヶ月前より古いデータを削除
-function cleanupOldData() {
-  const twoMonthsAgo = new Date();
-  twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
-  const cutoff = getDateKey(twoMonthsAgo);
-
-  for (let i = localStorage.length - 1; i >= 0; i--) {
-    const key = localStorage.key(i);
-    if (key && key.startsWith("task-checker-v3-")) {
-      const dateStr = key.replace("task-checker-v3-", "");
-      if (dateStr < cutoff) {
-        localStorage.removeItem(key);
-      }
-    }
-  }
-}
-
-function loadDayData(dateKey?: string): DaySaveData {
-  const key = getStorageKey(dateKey);
-  const stored = localStorage.getItem(key);
-  if (stored) {
-    return JSON.parse(stored);
-  }
-  return {
-    completedTasks: [],
-    report: { newItems: [], sharedItems: [] },
-    regionAssignments: [],
-    customTasks: [],
-    savedAt: "",
-  };
-}
-
-function saveDayData(data: DaySaveData, dateKey?: string) {
-  const key = getStorageKey(dateKey);
-  data.savedAt = new Date().toISOString();
-  localStorage.setItem(key, JSON.stringify(data));
-}
+import { createClient } from "@/lib/supabase/client";
+import {
+  type CompletedTask,
+  type DailyReport,
+  type ReportItem,
+  type RegionAssignment,
+  type CustomTask,
+  type DaySaveData,
+  getDateKey,
+  loadDayData,
+  saveDayData,
+  cleanupOldLocalData,
+  getEmptyDayData,
+} from "@/lib/storage";
 
 // --- Main Component ---
 
-export function TaskChecker() {
+interface TaskCheckerProps {
+  userId: string;
+  isAdmin: boolean;
+}
+
+export function TaskChecker({ userId, isAdmin }: TaskCheckerProps) {
+  const supabase = createClient();
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<"synced" | "syncing" | "error">("synced");
+  const todayKey = getDateKey();
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    await supabase.auth.signOut();
+    // Page will handle redirect after auth state change
+  };
   const [completedTasks, setCompletedTasks] = useState<CompletedTask[]>([]);
   const [report, setReport] = useState<DailyReport>({ newItems: [], sharedItems: [] });
   const [regionAssignments, setRegionAssignments] = useState<RegionAssignment[]>([]);
@@ -106,27 +50,51 @@ export function TaskChecker() {
 
   // 初回ロード
   useEffect(() => {
-    cleanupOldData();
-    const data = loadDayData();
-    setCompletedTasks(data.completedTasks);
-    setReport(data.report);
-    setRegionAssignments(data.regionAssignments);
-    setCustomTasks(data.customTasks);
-    setIsLoaded(true);
-  }, []);
+    const loadData = async () => {
+      cleanupOldLocalData();
+      const data = await loadDayData(userId, todayKey);
+      setCompletedTasks(data.completedTasks);
+      setReport(data.report);
+      setRegionAssignments(data.regionAssignments);
+      setCustomTasks(data.customTasks);
+      setIsLoaded(true);
+    };
+    loadData();
+  }, [userId, todayKey]);
 
-  // 自動保存
+  // 自動保存（デバウンス付き）
   useEffect(() => {
-    if (isLoaded) {
-      saveDayData({
-        completedTasks,
-        report,
-        regionAssignments,
-        customTasks,
-        savedAt: "",
-      });
+    if (!isLoaded) return;
+
+    // Clear previous timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
     }
-  }, [completedTasks, report, regionAssignments, customTasks, isLoaded]);
+
+    setSyncStatus("syncing");
+
+    // Debounce save by 1 second
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        await saveDayData(userId, todayKey, {
+          completedTasks,
+          report,
+          regionAssignments,
+          customTasks,
+          savedAt: "",
+        });
+        setSyncStatus("synced");
+      } catch {
+        setSyncStatus("error");
+      }
+    }, 1000);
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [completedTasks, report, regionAssignments, customTasks, isLoaded, userId, todayKey]);
 
   // タスクリストをカスタムタスク含めてマージ
   const getMergedTimeSlots = useCallback((): TimeSlot[] => {
@@ -267,6 +235,24 @@ export function TaskChecker() {
       {/* Header */}
       <header className="flex items-center gap-3 px-4 py-3 border-b border-border bg-card">
         <h1 className="flex-1 text-lg font-medium text-foreground">BPO 業務進捗チェック</h1>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Calendar className="w-4 h-4" />
+          <span>{todayKey}</span>
+        </div>
+        <div className="flex items-center gap-1 text-xs text-muted-foreground" title={syncStatus === "synced" ? "クラウド同期済み" : syncStatus === "syncing" ? "同期中..." : "同期エラー"}>
+          {syncStatus === "synced" && <Cloud className="w-4 h-4 text-green-500" />}
+          {syncStatus === "syncing" && <Cloud className="w-4 h-4 text-yellow-500 animate-pulse" />}
+          {syncStatus === "error" && <CloudOff className="w-4 h-4 text-destructive" />}
+        </div>
+        <button
+          onClick={handleLogout}
+          disabled={loggingOut}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors disabled:opacity-50"
+          aria-label="ログアウト"
+        >
+          <LogOut className="w-4 h-4" />
+          <span className="hidden sm:inline">ログアウト</span>
+        </button>
       </header>
 
       {/* Legend */}
@@ -441,7 +427,7 @@ function RegionSelector({
                     setStaffForRegion(region.id, e.target.value);
                   }}
                   className="px-2 py-1.5 bg-input border border-border rounded text-sm text-foreground"
-                  aria-label={`${region.name}の担当���選択`}
+                  aria-label={`${region.name}の担当���選���`}
                 >
                   <option value="">担当者選択</option>
                   {staffList.map((s) => (

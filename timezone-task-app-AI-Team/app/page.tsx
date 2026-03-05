@@ -3,18 +3,54 @@
 import { useState, useEffect } from "react";
 import { TaskChecker } from "@/components/task-checker";
 import { LoginForm } from "@/components/login-form";
+import { createClient } from "@/lib/supabase/client";
 
 export default function Page() {
-  const [authenticated, setAuthenticated] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [checking, setChecking] = useState(true);
 
+  const supabase = createClient();
+
   useEffect(() => {
-    const auth = sessionStorage.getItem("auth-user");
-    if (auth === "true") {
-      setAuthenticated(true);
-    }
-    setChecking(false);
-  }, []);
+    const checkAuth = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        // Get profile to check role
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .single();
+        
+        setUserId(user.id);
+        setIsAdmin(profile?.role === "admin");
+      }
+      setChecking(false);
+    };
+
+    checkAuth();
+
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "SIGNED_OUT") {
+        setUserId(null);
+        setIsAdmin(false);
+      } else if (session?.user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", session.user.id)
+          .single();
+        
+        setUserId(session.user.id);
+        setIsAdmin(profile?.role === "admin");
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [supabase]);
 
   if (checking) {
     return (
@@ -24,9 +60,17 @@ export default function Page() {
     );
   }
 
-  if (!authenticated) {
-    return <LoginForm role="user" onSuccess={() => setAuthenticated(true)} />;
+  if (!userId) {
+    return (
+      <LoginForm 
+        role="user" 
+        onSuccess={(id, admin) => {
+          setUserId(id);
+          setIsAdmin(admin);
+        }} 
+      />
+    );
   }
 
-  return <TaskChecker />;
+  return <TaskChecker userId={userId} isAdmin={isAdmin} />;
 }
